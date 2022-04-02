@@ -34,6 +34,12 @@ export function ProductsCard() {
     setProductCount(count);
   }
 
+  const getProducts = () => {
+    fetch("/myproducts")
+    .then(res=>res)
+    .then(data=>console.log(data.json()));
+  }
+
   useEffect(() => {
     updateProductCount();
   }, []);
@@ -81,6 +87,14 @@ export function ProductsCard() {
             }}
           >
             Populate 5 products
+          </Button>
+
+          <Button
+            primary
+            loading={loading}
+            onClick={getProducts()}
+          >
+            Test
           </Button>
         </TextContainer>
       </Card>

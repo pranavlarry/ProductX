@@ -4,6 +4,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { Shopify, ApiVersion } from "@shopify/shopify-api";
 import "dotenv/config";
+import { MongoClient, ServerApiVersion } from 'mongodb';
 
 import applyAuthMiddleware from "./middleware/auth.js";
 import verifyRequest from "./middleware/verify-request.js";
@@ -13,6 +14,7 @@ const TOP_LEVEL_OAUTH_COOKIE = "shopify_top_level_oauth";
 
 const PORT = parseInt(process.env.PORT || "8081", 10);
 const isTest = process.env.NODE_ENV === "test" || !!process.env.VITE_TEST_BUILD;
+
 
 Shopify.Context.initialize({
   API_KEY: process.env.SHOPIFY_API_KEY,
@@ -93,16 +95,49 @@ export async function createServer(
     next();
   });
 
+  app.get("/myproducts", async (req,res) => {
+    const session = await Shopify.Utils.loadCurrentSession(req, res, true);
+    if (session) {
+      const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+      const data = await client.get({
+        path: 'products',
+      });
+      console.log(data);
+      res.status(200).send(data);
+    }
+
+  })
+
   app.use("/*", (req, res, next) => {
     const shop = req.query.shop;
+    
+    const uri = "mongodb+srv://lari:pranavlari@cluster0.lqo0h.mongodb.net/myFirstDatabase?retryWrites=true&w=majority";
+    const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
-    // Detect whether we need to reinstall the app, any request from Shopify will
-    // include a shop in the query parameters.
-    if (app.get("active-shopify-shops")[shop] === undefined && shop) {
-      res.redirect(`/auth?shop=${shop}`);
-    } else {
-      next();
-    }
+    client.connect(err => {
+      if (app.get("data-added-or-present") == undefined) {
+        const collection = client.db("projectx").collection("stores");
+        collection.findOne({shop_url: req.query.shop}, function(err, response) {
+          client.close();
+          if (err) throw err;
+          else {
+            if (response != null) {
+              app.set("data-added-or-present","yes");
+              next();
+            }
+            else {
+              res.redirect(`/auth?shop=${req.query.shop}`);
+            }
+      
+          }
+          client.close();
+      
+        });
+      }
+      else {
+        next();
+      }
+    });
   });
 
   /**
@@ -126,6 +161,7 @@ export async function createServer(
         },
       })
     );
+  
     app.use(vite.middlewares);
   } else {
     const compression = await import("compression").then(
@@ -138,6 +174,7 @@ export async function createServer(
     app.use(compression());
     app.use(serveStatic(resolve("dist/client")));
     app.use("/*", (req, res, next) => {
+      console.log("second /");
       // Client-side routing will pick up on the correct route to render, so we always render the index here
       res
         .status(200)
@@ -152,3 +189,4 @@ export async function createServer(
 if (!isTest) {
   createServer().then(({ app }) => app.listen(PORT));
 }
+

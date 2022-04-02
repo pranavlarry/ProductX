@@ -1,9 +1,12 @@
 import { Shopify } from "@shopify/shopify-api";
 
 import topLevelAuthRedirect from "../helpers/top-level-auth-redirect.js";
+import { MongoClient, ServerApiVersion } from 'mongodb';
 
 export default function applyAuthMiddleware(app) {
   app.get("/auth", async (req, res) => {
+
+    console.log("auth",req.query.shop)
     if (!req.signedCookies[app.get("top-level-oauth-cookie")]) {
       return res.redirect(`/auth/toplevel?shop=${req.query.shop}`);
     }
@@ -20,6 +23,7 @@ export default function applyAuthMiddleware(app) {
   });
 
   app.get("/auth/toplevel", (req, res) => {
+    console.log("/auth/toplevel",req.query.shop)
     res.cookie(app.get("top-level-oauth-cookie"), "1", {
       signed: true,
       httpOnly: true,
@@ -38,12 +42,15 @@ export default function applyAuthMiddleware(app) {
   });
 
   app.get("/auth/callback", async (req, res) => {
+    console.log("/auth/callback",req.query.shop)
     try {
       const session = await Shopify.Auth.validateAuthCallback(
         req,
         res,
         req.query
       );
+
+      console.log(session);
 
       const host = req.query.host;
       app.set(
@@ -53,19 +60,31 @@ export default function applyAuthMiddleware(app) {
         })
       );
 
-      const response = await Shopify.Webhooks.Registry.register({
-        shop: session.shop,
-        accessToken: session.accessToken,
-        topic: "APP_UNINSTALLED",
-        path: "/webhooks",
+      // const response = await Shopify.Webhooks.Registry.register({
+      //   shop: req.query.shop,
+      //   accessToken: session.accessToken,
+      //   topic: "APP_UNINSTALLED",
+      //   path: "/webhooks",
+      // });
+
+      // if (!response["APP_UNINSTALLED"].success) {
+      //   console.log(
+      //     `Failed to register APP_UNINSTALLED webhook: ${response.result}`
+      //   );
+      // }
+      const uri = "mongodb+srv://lari:pranavlari@cluster0.lqo0h.mongodb.net/myFirstDatabase?retryWrites=true&w=majority";
+      const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+      client.connect(err => {
+        const collection = client.db("projectx").collection("stores");
+        var shop = { shop_url: session.shop, access_token: session.accessToken};
+        collection.insertOne(shop, function(err, res) {
+          if (err) throw err;
+          client.close();
+
+        });
+        // client.close();
+
       });
-
-      if (!response["APP_UNINSTALLED"].success) {
-        console.log(
-          `Failed to register APP_UNINSTALLED webhook: ${response.result}`
-        );
-      }
-
       // Redirect to app with shop parameter upon auth
       res.redirect(`/?shop=${session.shop}&host=${host}`);
     } catch (e) {
